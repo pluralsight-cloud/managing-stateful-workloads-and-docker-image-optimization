@@ -7,75 +7,32 @@ metadata:
 spec:
   containers:
     - name: backup-tool
-      # Pulled from the local registry hosted on the workstation (see the
-      # CloudFormation UserData for PublicInstance0) - build/tag/push happens
-      # separately, this just needs to match wherever that ends up:
-      #   docker build -t backup-tool:latest .
-      #   docker tag backup-tool:latest 10.0.1.104:5000/backup-tool:latest
-      #   docker push 10.0.1.104:5000/backup-tool:latest
       image: 10.0.1.104:5000/backup-tool:latest
-      imagePullPolicy: IfNotPresent
-      # Idle, same as the Docker side - every archive should come from an
-      # explicit `kubectl exec ... backup-tool run`, not a background poll
-      # loop. This also sidesteps a real gotcha: this image has no
-      # ENTRYPOINT, so `args` replaces CMD outright rather than appending
-      # to an assumed program name - `args: ["watch", "/uploads"]` here
-      # would silently run Alpine's OWN unrelated `watch` utility instead
-      # of this app's `watch` subcommand. `sleep infinity` has no such
-      # ambiguity.
+      imagePullPolicy: Always
       args: ["sleep", "infinity"]
-
-      # --- ConfigMap #1: mounted as environment variables ---
       envFrom:
         - configMapRef:
             name: backup-env-config
-
       volumeMounts:
-        # "Upload location" - an emptyDir, populated via `kubectl cp` from
-        # the workstation rather than a live host directory (the Pod can
-        # land on any node, and the workstation isn't one of them, so
-        # there's no shared filesystem to bind-mount here the way Docker
-        # could on a single machine).
         - name: data
           mountPath: /uploads
-
-        # Destination for archives - survives container restarts within
-        # the Pod the same way the named volume did in Docker. (For
-        # archives to survive Pod deletion too, back this with a
-        # PersistentVolumeClaim instead of emptyDir - noted below.)
         - name: backups
           mountPath: /backups
-
-        # --- ConfigMap #2: mounted as a projected file ---
         - name: file-config
           mountPath: /etc/backup-tool/backup.conf
           subPath: backup.conf
           readOnly: true
-
-        # --- Secret: mounted as a file, not an env var ---
         - name: secret-passphrase
           mountPath: /etc/backup-tool/secrets
           readOnly: true
-
   volumes:
-    # emptyDir instead of hostPath: this Pod isn't pinned to a specific
-    # node, so there's no single node filesystem path to point at. Data
-    # gets in via `kubectl cp` (see README) rather than a live mount - it
-    # won't survive Pod deletion, only container restarts within the Pod.
     - name: data
       emptyDir: {}
-
     - name: backups
       emptyDir: {}
-      # Swap the line above for the block below to make archives survive
-      # Pod deletion too, not just container restarts within the Pod:
-      # persistentVolumeClaim:
-      #   claimName: backup-archives-pvc
-
     - name: file-config
       configMap:
         name: backup-file-config
-
     - name: secret-passphrase
       secret:
         secretName: backup-passphrase
