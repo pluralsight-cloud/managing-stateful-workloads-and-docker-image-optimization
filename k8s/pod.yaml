@@ -5,6 +5,7 @@ metadata:
   labels:
     app: backup-tool
 spec:
+  nodeName: node1
   containers:
     - name: backup-tool
       image: 10.0.1.104:5000/backup-tool:latest
